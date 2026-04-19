@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>World Domination</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #060c14; overflow-x: hidden; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useRef, useEffect, useCallback } = React;
+
+// ─── REAL-ISH CONTINENT/REGION SVG PATHS (Robinson-projection approximations) ───
+// viewBox=“0 0 1000 500”
+const REGION_PATHS = {
+north_america: `M 85,55 L 110,45 L 145,40 L 180,48 L 210,52 L 235,65 L 250,85 L 255,110  L 248,135 L 240,155 L 225,170 L 210,185 L 195,195 L 178,200 L 160,205  L 145,195 L 125,185 L 108,170 L 92,150 L 78,128 L 72,105 L 78,78 Z`,
+central_america: `M 178,200 L 195,195 L 210,185 L 220,198 L 215,215 L 200,222 L 185,218 L 175,210 Z`,
+south_america: `M 170,225 L 195,218 L 220,220 L 238,235 L 248,258 L 252,285  L 248,315 L 238,345 L 220,370 L 200,390 L 180,398 L 162,385  L 148,360 L 140,330 L 138,298 L 142,268 L 150,242 Z`,
+greenland: `M 185,18 L 210,15 L 230,22 L 235,38 L 220,48 L 198,48 L 182,38 Z`,
+western_europe: `M 380,62 L 408,55 L 432,58 L 448,70 L 452,88 L 445,108 L 428,120  L 408,125 L 388,118 L 372,102 L 368,82 Z`,
+eastern_europe: `M 448,58 L 478,52 L 508,55 L 522,68 L 520,88 L 508,105  L 488,115 L 465,118 L 448,108 L 445,88 Z`,
+scandinavia: `M 428,28 L 448,22 L 468,28 L 472,45 L 460,58 L 445,62 L 428,55 L 420,42 Z`,
+russia: `M 518,30 L 588,22 L 658,18 L 728,22 L 785,32 L 810,48 L 812,68  L 798,85 L 768,95 L 728,100 L 688,98 L 648,95 L 608,98 L 568,100  L 535,95 L 518,80 L 512,58 Z`,
+middle_east: `M 478,118 L 508,112 L 538,115 L 558,128 L 562,148 L 552,168  L 532,178 L 508,180 L 485,172 L 472,155 L 470,135 Z`,
+africa: `M 372,138 L 408,132 L 448,135 L 475,148 L 485,172 L 488,200  L 485,235 L 478,268 L 465,298 L 448,325 L 425,348 L 402,358  L 378,350 L 355,328 L 340,298 L 335,265 L 338,232 L 345,200  L 352,168 L 360,148 Z`,
+central_asia: `M 558,75 L 608,68 L 648,70 L 668,85 L 665,105 L 645,118  L 612,122 L 578,118 L 558,105 L 552,88 Z`,
+south_asia: `M 558,128 L 598,122 L 635,125 L 658,138 L 665,158 L 658,178  L 638,198 L 612,210 L 585,212 L 562,202 L 548,182 L 545,158 Z`,
+east_asia: `M 648,55 L 695,48 L 738,52 L 762,65 L 768,85 L 758,108  L 735,125 L 705,132 L 672,128 L 648,112 L 638,90 L 638,68 Z`,
+southeast_asia: `M 668,148 L 698,142 L 728,145 L 748,158 L 752,178 L 740,195  L 718,205 L 692,205 L 670,195 L 658,178 L 658,160 Z`,
+japan_korea: `M 762,68 L 782,62 L 800,68 L 805,82 L 795,95 L 778,100 L 762,92 L 755,78 Z`,
+oceania: `M 728,272 L 775,265 L 818,268 L 848,282 L 858,305 L 845,328  L 815,342 L 778,345 L 742,338 L 718,320 L 712,298 Z`,
+antarctica: `M 50,448 L 950,448 L 960,480 L 40,480 Z`,
+caribbean: `M 222,175 L 248,170 L 258,182 L 245,192 L 222,190 Z`,
+uk_ireland: `M 358,55 L 375,48 L 385,55 L 382,68 L 368,72 L 355,65 Z`,
+iceland: `M 295,28 L 318,22 L 332,30 L 328,42 L 312,48 L 295,42 Z`,
+};
+
+const REGIONS = {
+north_america:    { name:“North America”,   short:“N. America”,  vp:4, color_base:”#1a4a2e”, neighbors:[“south_america”,“western_europe”,“russia”,“central_america”,“greenland”,“caribbean”] },
+central_america:  { name:“Central America”, short:“C. America”,  vp:1, color_base:”#1a3a28”, neighbors:[“north_america”,“south_america”,“caribbean”] },
+south_america:    { name:“South America”,   short:“S. America”,  vp:3, color_base:”#1a4a2e”, neighbors:[“north_america”,“central_america”,“africa”,“western_europe”] },
+greenland:        { name:“Greenland”,       short:“Greenland”,   vp:1, color_base:”#1a3535”, neighbors:[“north_america”,“scandinavia”,“western_europe”] },
+caribbean:        { name:“Caribbean”,       short:“Caribbean”,   vp:1, color_base:”#1a3a28”, neighbors:[“north_america”,“central_america”,“south_america”,“western_europe”] },
+western_europe:   { name:“W. Europe”,       short:“W. Europe”,   vp:3, color_base:”#1a2a4a”, neighbors:[“eastern_europe”,“scandinavia”,“africa”,“middle_east”,“north_america”,“uk_ireland”] },
+eastern_europe:   { name:“E. Europe”,       short:“E. Europe”,   vp:2, color_base:”#1a2a4a”, neighbors:[“western_europe”,“russia”,“middle_east”,“scandinavia”] },
+scandinavia:      { name:“Scandinavia”,     short:“Scand.”,      vp:1, color_base:”#1a2a4a”, neighbors:[“western_europe”,“eastern_europe”,“russia”,“uk_ireland”] },
+uk_ireland:       { name:“UK & Ireland”,    short:“UK”,          vp:1, color_base:”#1a2a4a”, neighbors:[“western_europe”,“scandinavia”,“greenland”] },
+iceland:          { name:“Iceland”,         short:“Iceland”,     vp:1, color_base:”#1a3535”, neighbors:[“uk_ireland”,“greenland”,“scandinavia”] },
+russia:           { name:“Russia”,          short:“Russia”,      vp:4, color_base:”#2a1a4a”, neighbors:[“eastern_europe”,“central_asia”,“east_asia”,“middle_east”,“scandinavia”] },
+middle_east:      { name:“Middle East”,     short:“Mid. East”,   vp:2, color_base:”#3a2a1a”, neighbors:[“eastern_europe”,“russia”,“africa”,“south_asia”,“central_asia”,“western_europe”] },
+africa:           { name:“Africa”,          short:“Africa”,      vp:3, color_base:”#2a1a1a”, neighbors:[“western_europe”,“middle_east”,“south_asia”,“south_america”] },
+central_asia:     { name:“Central Asia”,    short:“C. Asia”,     vp:2, color_base:”#2a1a4a”, neighbors:[“russia”,“middle_east”,“south_asia”,“east_asia”] },
+south_asia:       { name:“South Asia”,      short:“S. Asia”,     vp:3, color_base:”#1a3a1a”, neighbors:[“middle_east”,“africa”,“central_asia”,“east_asia”,“southeast_asia”] },
+east_asia:        { name:“East Asia”,       short:“E. Asia”,     vp:4, color_base:”#1a3a1a”, neighbors:[“russia”,“central_asia”,“south_asia”,“southeast_asia”,“japan_korea”] },
+southeast_asia:   { name:“SE Asia”,         short:“SE Asia”,     vp:2, color_base:”#1a3a1a”, neighbors:[“east_asia”,“south_asia”,“oceania”,“japan_korea”] },
+japan_korea:      { name:“Japan & Korea”,   short:“Japan/Korea”, vp:2, color_base:”#1a3a1a”, neighbors:[“east_asia”,“southeast_asia”] },
+oceania:          { name:“Oceania”,         short:“Oceania”,     vp:2, color_base:”#1a2a3a”, neighbors:[“southeast_asia”,“japan_korea”,“antarctica”] },
+antarctica:       { name:“Antarctica”,      short:“Antarctica”,  vp:0, color_base:”#2a3a4a”, neighbors:[“south_america”,“africa”,“oceania”] },
+};
+
+const REGION_IDS = Object.keys(REGIONS);
+const TOTAL_VP = REGION_IDS.reduce((s,k)=>s+REGIONS[k].vp,0);
+
+const AI_FACTIONS = [
+{ id:“china_ai”,  name:“China”,       flag:“🇨🇳”, color:”#cc2222”, startRegions:[“east_asia”,“southeast_asia”,“japan_korea”] },
+{ id:“russia_ai”, name:“Russia”,      flag:“🇷🇺”, color:”#8822cc”, startRegions:[“russia”,“central_asia”] },
+{ id:“eu_ai”,     name:“EU”,          flag:“🇪🇺”, color:”#2244cc”, startRegions:[“western_europe”,“eastern_europe”,“scandinavia”] },
+];
+
+const PLAYER_FACTIONS = [
+{ id:“usa”,    name:“United States”, flag:“🇺🇸”, color:”#22aa44”, startRegion:“north_america” },
+{ id:“india”,  name:“India”,         flag:“🇮🇳”, color:”#dd8800”, startRegion:“south_asia” },
+{ id:“brazil”, name:“Brazil”,        flag:“🇧🇷”, color:”#00aaaa”, startRegion:“south_america” },
+];
+
+const WORLD_NEWS = [
+{ id:“ant1”, trigger:“always_4”,    from:“🐧 Antarctica”,             headline:“Antarctica demands immediate ceasefire”,                  body:“The Antarctic Treaty Council has condemned all military action. ‘The continent of peace watches in horror. Stand down immediately or face total global isolation.’ Scientists warn of cascading ecological collapse.”,            type:“warning” },
+{ id:“ant2”, trigger:“nuke”,        from:“🐧 Antarctic Research Base”, headline:“ANTARCTICA GOES DARK — communications cut”,               body:“Following nuclear detonation, all research stations have sealed their bunkers. The Antarctic Council declares itself a permanent demilitarized zone. ‘If civilization falls, we will rebuild it here.’”, type:“breaking” },
+{ id:“ant3”, trigger:“tension_80”,  from:“🐧 Antarctic Treaty”,        headline:“Antarctica threatens to join opposing side”,              body:“In an unprecedented move, Antarctica’s 53 treaty nations threaten to release classified geological data to your enemies if aggression continues. ‘We are not as powerless as you think.’”,                  type:“condemnation” },
+{ id:“un1”,  trigger:“invasion”,    from:“🌐 United Nations”,          headline:“Emergency Security Council session called”,               body:“The UN Security Council met in emergency session. No resolution passed — vetoes flew in every direction. The Secretary-General called it ‘the greatest failure of multilateralism in history.’”,             type:“event” },
+{ id:“un2”,  trigger:“tension_70”,  from:“🌐 UN Secretary-General”,    headline:“World teetering on the brink, UN warns”,                  body:”‘I have activated every diplomatic channel available. The situation has deteriorated beyond anything in living memory. I am begging all parties to step back from the abyss before it is too late.’”,     type:“warning” },
+{ id:“br1”,  trigger:“player_vp_6”, from:“🇧🇷 Brazil”,                 headline:“Brazil offers strategic partnership”,                    body:“Brasília signals willingness to join your coalition. ‘We see a stable hand guiding world affairs. We are ready to contribute resources, intelligence, and diplomatic cover.’ Brazil requests mutual defense.”,  type:“ally_offer” },
+{ id:“jp1”,  trigger:“player_vp_8”, from:“🇯🇵 Japan”,                  headline:“Japan seeks mutual defense pact”,                        body:“Tokyo has made a direct approach. ‘Regional instability threatens our people. We believe your leadership offers the best path to stability.’ Japan offers intelligence sharing and industrial capacity.”, type:“ally_offer” },
+{ id:“au1”,  trigger:“player_vp_5”, from:“🇦🇺 Australia”,              headline:“Australia opens alliance negotiations”,                   body:“Canberra reaches out quietly. ‘The Pacific needs a leader. We’re watching events closely and believe partnership with you is in our national interest.’ Australia could open a southern flank.”,       type:“ally_offer” },
+{ id:“cn1”,  trigger:“china_vp_8”,  from:“🇨🇳 China State Media”,      headline:“China announces ‘New Silk Road of Power’”,               body:“Beijing declares a Chinese-led world order. 47 nations have signed preliminary agreements. ‘The era of Western dominance is over. A new civilization rises.’ Xi addresses a 100-nation summit.”,   type:“threat” },
+{ id:“ru1”,  trigger:“russia_vp_7”, from:“🇷🇺 Kremlin”,                headline:“Putin invokes ‘Sacred Defense’ doctrine”,                 body:“Moscow places nuclear forces on highest alert. ‘Any threat to Russian territory or our partners will be met with overwhelming, asymmetric response.’ Three submarine fleets have left port.”,          type:“threat” },
+{ id:“eu1”,  trigger:“eu_vp_7”,     from:“🇪🇺 European Commission”,    headline:“EU announces ‘United States of Europe’ emergency powers”, body:“Brussels activates emergency powers, unifying EU military command under a single general. Combined GDP of €18 trillion now directed toward the war effort. ‘Europe will not fall.’”,                  type:“threat” },
+{ id:“sw1”,  trigger:“always_6”,    from:“🇨🇭 Switzerland”,            headline:“Geneva peace talks offered — all parties invited”,        body:“The Swiss Federal Council has offered neutral ground for negotiations. ‘History will judge those who refuse to come to the table. Geneva awaits. The world’s people deserve better than this war.’”,  type:“event” },
+{ id:“nu1”,  trigger:“nuke”,        from:“📺 BREAKING — Global Wire”,  headline:“NUCLEAR WEAPON DETONATED”,                               body:“Trading halted on all global exchanges. Three nations have scrambled nuclear submarines. The Bulletin of Atomic Scientists has moved the Doomsday Clock to 90 seconds to midnight. Protests in every capital.”,    type:“breaking” },
+{ id:“mk1”,  trigger:“tension_60”,  from:“📈 Global Markets”,          headline:“Markets in freefall as conflict escalates”,               body:“The FTSE, Dow, Nikkei and Shanghai Composite all down 15%+ in a single session. Gold hits all-time high. Oil at $240/barrel. Economists warn of 1930s-style global depression if conflict continues.”,        type:“event” },
+{ id:“po1”,  trigger:“player_vp_10”,from:“📊 International Poll”,      headline:“Your approval rating hits 58% globally”,                  body:“A surprise international poll shows majority support for your vision of world order. ‘People want stability above all else.’ Even traditional opponents privately acknowledge your coalition’s growing legitimacy.”,  type:“positive” },
+{ id:“po2”,  trigger:“player_loss”,  from:“📊 International Poll”,      headline:“International approval collapses to 9%”,                  body:“You are now the most unpopular leader in recorded history. Protests outside your embassies in 61 cities. Former allies issue joint condemnation. Even your own advisors are resigning in protest.”,         type:“condemnation” },
+];
+
+function roll(pct) { return Math.random() * 100 < pct; }
+
+function ownerColor(rid, terr, allies, playerColor) {
+const o = terr[rid];
+if (o === “player”) return playerColor;
+if (!o && allies.has(rid)) return “#0d6e4a”;
+if (!o) return null; // neutral = use base color
+const ai = AI_FACTIONS.find(a => a.id === o);
+return ai ? ai.color : null;
+}
+
+// ─── MAIN ────────────────────────────────────────────────────────────────────
+function WarGame() {
+const [phase, setPhase]     = useState(“setup”);
+const [tab, setTab]         = useState(“map”);
+const [pf, setPf]           = useState(null);
+const [terr, setTerr]       = useState({});
+const [fortified, setFort]  = useState(new Set());
+const [allies, setAllies]   = useState(new Set());
+const [blocked, setBlocked] = useState({});
+const [ap, setAp]           = useState(3);
+const [turn, setTurn]       = useState(1);
+const [tension, setTension] = useState(15);
+const [log, setLog]         = useState([]);
+const [news, setNews]       = useState([]);
+const [selAction, setSel]   = useState(null);
+const [selRegion, setSelR]  = useState(null);
+const [hovered, setHov]     = useState(null);
+const [gameOver, setGO]     = useState(null);
+const [usedNews, setUsedNews] = useState(new Set());
+const [customOrder, setCO]  = useState(””);
+const [showCO, setShowCO]   = useState(false);
+const [difficulty, setDiff] = useState(null);
+const logRef = useRef(null);
+const newsRef = useRef(null);
+
+useEffect(()=>{ logRef.current?.scrollTo(0,99999); },[log]);
+useEffect(()=>{ newsRef.current?.scrollTo(0,99999); },[news]);
+
+const playerVP = REGION_IDS.filter(r=>terr[r]===“player”).reduce((s,r)=>s+REGIONS[r].vp,0);
+const aiVP = id => REGION_IDS.filter(r=>terr[r]===id).reduce((s,r)=>s+REGIONS[r].vp,0);
+const tc = t => t<30?”#4ade80”:t<55?”#a3e635”:t<70?”#facc15”:t<85?”#f97316”:”#ef4444”;
+const pColor = pf?.color || “#22aa44”;
+
+const addLog  = (m,t=“ev”) => setLog(l=>[…l,{m,t,id:Date.now()+Math.random()}]);
+const addNews = (item) => setNews(n=>[…n,{…item,ts:Date.now()+Math.random()}]);
+
+const canReach = (rid, t2) =>
+REGIONS[rid].neighbors.some(n => t2[n]===“player” || (allies.has(rid)&&t2[n]===“player”));
+
+const checkAndFireNews = (newTerr, newTension, nuked=false) => {
+const pVP = REGION_IDS.filter(r=>newTerr[r]===“player”).reduce((s,r)=>s+REGIONS[r].vp,0);
+const cVP = REGION_IDS.filter(r=>newTerr[r]===“china_ai”).reduce((s,r)=>s+REGIONS[r].vp,0);
+const rVP = REGION_IDS.filter(r=>newTerr[r]===“russia_ai”).reduce((s,r)=>s+REGIONS[r].vp,0);
+const eVP = REGION_IDS.filter(r=>newTerr[r]===“eu_ai”).reduce((s,r)=>s+REGIONS[r].vp,0);
+const used = new Set(usedNews);
+const picks = WORLD_NEWS.filter(e => {
+if(used.has(e.id)) return false;
+if(e.trigger===“always_4”  && turn%4===0) return true;
+if(e.trigger===“always_6”  && turn%6===0) return true;
+if(e.trigger===“invasion”  && turn%2===0) return true;
+if(e.trigger===“nuke”      && nuked) return true;
+if(e.trigger===“tension_60”&& newTension>=60) return true;
+if(e.trigger===“tension_70”&& newTension>=70) return true;
+if(e.trigger===“tension_80”&& newTension>=80) return true;
+if(e.trigger===“player_vp_5” && pVP>=5) return true;
+if(e.trigger===“player_vp_6” && pVP>=6) return true;
+if(e.trigger===“player_vp_8” && pVP>=8) return true;
+if(e.trigger===“player_vp_10”&& pVP>=10) return true;
+if(e.trigger===“player_loss” && pVP<=2&&turn>5) return true;
+if(e.trigger===“china_vp_8” && cVP>=8) return true;
+if(e.trigger===“russia_vp_7”&& rVP>=7) return true;
+if(e.trigger===“eu_vp_7”    && eVP>=7) return true;
+return false;
+});
+if(picks.length){
+const pick=picks[Math.floor(Math.random()*picks.length)];
+addNews(pick);
+setUsedNews(new Set([…used,pick.id]));
+}
+};
+
+const DIFF = {
+easy:   { startAp:4, aiAttackPct:40, aiStartBonus:false, playerInvadeBonus:10, label:“🟢 Easy”,   desc:“AI attacks less. You start with 4 AP.” },
+medium: { startAp:3, aiAttackPct:55, aiStartBonus:false, playerInvadeBonus:0,  label:“🟡 Medium”, desc:“Balanced. Standard rules.” },
+hard:   { startAp:2, aiAttackPct:68, aiStartBonus:true,  playerInvadeBonus:-10,label:“🔴 Hard”,   desc:“AI is aggressive. You start with 2 AP.” },
+};
+
+const startGame = () => {
+if(!pf || !difficulty) return;
+const diff = DIFF[difficulty];
+const t={};
+t[pf.startRegion]=“player”;
+// On easy, give player one extra starting region
+if(difficulty===“easy”){
+const extras=REGIONS[pf.startRegion].neighbors.filter(n=>!Object.values(t).includes(“player”));
+if(extras.length) t[extras[0]]=“player”;
+}
+// On hard, AI gets one extra region each
+AI_FACTIONS.forEach(ai=>{
+ai.startRegions.forEach(r=>{ t[r]=ai.id; });
+if(difficulty===“hard” && ai.startRegions.length>0){
+const home=ai.startRegions[0];
+const bonus=REGIONS[home].neighbors.find(n=>!t[n]);
+if(bonus) t[bonus]=ai.id;
+}
+});
+setTerr(t); setFort(new Set()); setAllies(new Set()); setBlocked({});
+setAp(diff.startAp); setTurn(1); setTension(15); setGO(null); setUsedNews(new Set());
+setLog([{m:`🌍 OPERATION WORLD DOMINATION — ${pf.name} begins its rise. You hold ${REGIONS[pf.startRegion].name}. Expand, conquer, and dominate before your rivals do.`,t:“start”,id:1}]);
+setNews([{from:“📺 World News Network”,headline:“New power emerges on the world stage”,body:`Intelligence agencies worldwide have detected unusual military mobilization by ${pf.name}. Emergency summits are being called. The world holds its breath.`,type:“event”,ts:1}]);
+setSel(null); setSelR(null); setShowCO(false); setPhase(“game”); setTab(“map”);
+};
+
+const executeAction = (actionId, rid) => {
+const owner = terr[rid];
+const costMap={invade:2,fortify:1,sanction:1,ally:1,nuke:4,diplomacy:1};
+const cost=costMap[actionId]||1;
+if(ap<cost){ addLog(“⚠️ Not enough AP.”,“warn”); return; }
+let nt={…terr}, nuked=false, newTension=tension, nf=new Set(fortified), na=new Set(allies);
+const newAp=ap-cost;
+
+```
+if(actionId==="invade"){
+  if(owner==="player"){ addLog("⚠️ Already yours.","warn"); setSel(null); setSelR(null); return; }
+  if(!canReach(rid,nt)){ addLog(`⚠️ ${REGIONS[rid].name} is not adjacent to your territory.`,"warn"); setSelR(null); return; }
+  if(rid==="antarctica"){ addLog("🐧 Your generals refuse. 'Sir, we cannot invade Antarctica. The world would never forgive us.'"  ,"warn"); setSelR(null); return; }
+  const invBonus=difficulty==="easy"?10:difficulty==="hard"?-10:0; const base = nf.has(rid)?38+invBonus:na.has(rid)?78+invBonus:60+invBonus;
+  const ok=roll(base);
+  if(ok){ nt[rid]="player"; nf.delete(rid); na.delete(rid); addLog(`⚔️ VICTORY — ${REGIONS[rid].name} falls to your forces! The flag is raised.`,"win"); }
+  else  { addLog(`⚔️ REPELLED — Assault on ${REGIONS[rid].name} fails. Heavy casualties. Morale dips.`,"loss"); }
+  newTension+=12;
+} else if(actionId==="fortify"){
+  if(owner!=="player"){ addLog("⚠️ Can only fortify your own territory.","warn"); setSelR(null); return; }
+  nf.add(rid); addLog(`🛡️ ${REGIONS[rid].name} is fortified. Attackers face severe penalties.`,"ev");
+} else if(actionId==="sanction"){
+  if(!owner||owner==="player"){ addLog("⚠️ Target an enemy region.","warn"); setSelR(null); return; }
+  setBlocked(b=>({...b,[owner]:(b[owner]||0)+1}));
+  addLog(`💰 Sanctions crushing ${AI_FACTIONS.find(a=>a.id===owner)?.name}. Their economy bleeds. Next turn skipped.`,"ev");
+  newTension+=5;
+} else if(actionId==="ally"){
+  if(owner){ addLog("⚠️ Can only ally with neutral (unclaimed) regions.","warn"); setSelR(null); return; }
+  if(rid==="antarctica"){ addLog("🐧 Antarctica: 'We will never be anyone's pawn. Leave us alone.'"  ,"ev"); setSelR(null); return; }
+  const ok=roll(50);
+  if(ok){ na.add(rid); addLog(`🤝 ${REGIONS[rid].name} joins your coalition! Shown in teal. Defending through them is easier.`,"win"); }
+  else  { addLog(`🤝 ${REGIONS[rid].name} declines. 'We need more assurances before committing.'`,"ev"); }
+} else if(actionId==="nuke"){
+  if(owner==="player"){ addLog("⚠️ Cannot nuke own territory.","warn"); setSelR(null); return; }
+  if(rid==="antarctica"){ addLog("☢️ LAUNCH ABORTED. 'I will not press that button, sir. Court-martial me if you must.' — General Morrison"  ,"warn"); setSelR(null); return; }
+  const ok=roll(88);
+  if(ok){ nt[rid]="player"; nf.delete(rid); na.delete(rid); addLog(`☢️ NUCLEAR STRIKE — ${REGIONS[rid].name} devastated. The world recoils in horror.`,"win"); }
+  else  { addLog(`☢️ INTERCEPTED — Missile defense systems destroyed the warhead. The launch was detected worldwide.`,"loss"); }
+  newTension+=28; nuked=true;
+} else if(actionId==="diplomacy"){
+  setAp(newAp+1); addLog(`🕊️ Diplomatic breakthrough — +1 AP gained this turn.`,"ev");
+  setTerr(nt); setFort(nf); setAllies(na); setSel(null); setSelR(null); return;
+}
+
+setTerr(nt); setFort(nf); setAllies(na);
+setAp(newAp); setTension(Math.min(100,newTension));
+setSel(null); setSelR(null);
+checkAndFireNews(nt,Math.min(100,newTension),nuked);
+checkWin(nt);
+```
+
+};
+
+const handleCustomOrder = () => {
+const o=customOrder.trim().toLowerCase();
+if(!o) return;
+let msg=””, dt=0;
+if(o.includes(“nuke”)||o.includes(“nuclear”))    { dt=18; msg=“☢️ Nuclear posturing noted. Tension spikes across all capitals.”; }
+else if(o.includes(“ally”)||o.includes(“coalition”)){ setAp(a=>a+1); msg=“🤝 Diplomatic outreach successful — +1 AP.”; }
+else if(o.includes(“spy”)||o.includes(“covert”))  { msg=“🕵️ Covert operation underway. Enemy movements logged.”; }
+else if(o.includes(“peace”)||o.includes(“ceasefire”)){ dt=-12; msg=“🕊️ Peace signal sent. Tension eases. Rivals respond cautiously.”; }
+else if(o.includes(“propaganda”)||o.includes(“media”)){ msg=“📺 Information campaign launched. World opinion shifts slightly in your favor.”; }
+else if(o.includes(“economic”)||o.includes(“sanction”)){ dt=6; msg=“💰 Economic pressure applied. Markets react. Rivals squeezed.”; }
+else { msg=`📋 Order acknowledged: "${customOrder}" — advisors implement. Consequences unfold next turn.`; }
+addLog(msg,“ev”);
+setTension(t=>Math.min(100,Math.max(0,t+dt)));
+setCO(””); setShowCO(false);
+};
+
+const endTurn = () => {
+let nt={…terr}, nf=new Set(fortified), nb={…blocked}, newTension=tension;
+AI_FACTIONS.forEach(ai=>{
+if(nb[ai.id]>0){ addLog(`⏸️ ${ai.flag} ${ai.name} is sanctioned — turn frozen.`,“intel”); nb[ai.id]–; return; }
+const myR=REGION_IDS.filter(r=>nt[r]===ai.id);
+if(!myR.length) return;
+const targets=[];
+myR.forEach(r=>REGIONS[r].neighbors.forEach(n=>{ if(nt[n]!==ai.id&&!targets.includes(n)) targets.push(n); }));
+if(!targets.length){ const p=myR[Math.floor(Math.random()*myR.length)]; nf.add(p); addLog(`📡 ${ai.flag} ${ai.name} fortifies ${REGIONS[p].name}.`,“intel”); return; }
+const pt=targets.filter(t=>nt[t]===“player”);
+const pick=pt.length>0?pt[Math.floor(Math.random()*pt.length)]:targets[Math.floor(Math.random()*targets.length)];
+if(pick===“antarctica”){ return; }
+const diffAtkBase=difficulty===“easy”?40:difficulty===“hard”?68:55; const pct=nf.has(pick)?Math.round(diffAtkBase*0.58):allies.has(pick)?Math.round(diffAtkBase*0.76):diffAtkBase;
+const ok=roll(pct);
+addLog(`📡 ${ai.flag} ${ai.name} attacks ${REGIONS[pick]?.name}!`,“intel”);
+if(ok){ nt[pick]=ai.id; nf.delete(pick); addLog(`🔴 ${ai.name} CAPTURES ${REGIONS[pick].name}!`,“loss”); newTension+=7; }
+});
+const newTurn=turn+1;
+const bonus=Math.floor(playerVP/4);
+setTerr(nt); setFort(nf); setBlocked(nb);
+setTension(Math.min(100,newTension)); setTurn(newTurn); setAp(3+bonus);
+setSel(null); setSelR(null);
+checkAndFireNews(nt,Math.min(100,newTension));
+checkWin(nt,newTurn);
+};
+
+const checkWin=(t2,t=turn)=>{
+const pVP=REGION_IDS.filter(r=>t2[r]===“player”).reduce((s,r)=>s+REGIONS[r].vp,0);
+if(pVP>=TOTAL_VP){ setGO({win:true,msg:`🏆 WORLD DOMINATION ACHIEVED\n\nEvery nation has fallen. History will never forget your name.\n\nTurns: ${t} · VP: ${pVP}/${TOTAL_VP} · Tension: ${tension}/100`}); setPhase(“end”); return; }
+for(const ai of AI_FACTIONS){
+const aVP=REGION_IDS.filter(r=>t2[r]===ai.id).reduce((s,r)=>s+REGIONS[r].vp,0);
+if(aVP>=TOTAL_VP){ setGO({win:false,msg:`💀 ${ai.name.toUpperCase()} ACHIEVES WORLD DOMINATION\n\n${ai.flag} Their flag flies over every capital. Your empire crumbles.\n\nFinal VP: ${pVP}/${TOTAL_VP}`}); setPhase(“end”); return; }
+}
+if(t>=24){
+const pVP2=REGION_IDS.filter(r=>t2[r]===“player”).reduce((s,r)=>s+REGIONS[r].vp,0);
+setGO({win:pVP2>14,msg:pVP2>14?`🌍 DOMINANT POWER — You lead with ${pVP2}/${TOTAL_VP} VP after 24 turns. No rival matched you.`:`⚔️ STALEMATE — No one achieved domination. You held ${pVP2}/${TOTAL_VP} VP.`});
+setPhase(“end”);
+}
+};
+
+// ─── SETUP ──────────────────────────────────────────────────────────────────
+if(phase===“setup”) return (
+<div style={S.root}><style>{CSS}</style>
+<div style={S.setup}>
+<div style={S.setupHeader}>
+<div style={S.glow}/>
+<p style={S.setupSub}>GLOBAL CONQUEST</p>
+<h1 style={S.setupTitle}>WORLD DOMINATION</h1>
+<p style={S.setupDesc}>Conquer the world before China, Russia and the EU do.</p>
+</div>
+<div style={S.setupSection}>
+<div style={S.sLabel}>SELECT FACTION</div>
+<div style={{display:“flex”,gap:10,marginBottom:24}}>
+{PLAYER_FACTIONS.map(f=>(
+<div key={f.id} onClick={()=>setPf(f)} style={{…S.fCard,
+borderColor:pf?.id===f.id?f.color:”#1e2830”,
+background:pf?.id===f.id?`${f.color}18`:”#0d1318”,
+boxShadow:pf?.id===f.id?`0 0 20px ${f.color}44`:“none”}}>
+<span style={{fontSize:30}}>{f.flag}</span>
+<div style={{fontSize:13,fontWeight:700,color:”#e0e8f0”}}>{f.name}</div>
+<div style={{fontSize:11,color:”#4a6070”}}>Start: {REGIONS[f.startRegion].name}</div>
+</div>
+))}
+</div>
+</div>
+<div style={{marginBottom:24}}>
+<div style={S.sLabel}>SELECT DIFFICULTY</div>
+<div style={{display:“flex”,gap:10}}>
+{[
+{id:“easy”,  label:“🟢 Easy”,  sub:“AI attacks less · 4 AP start · +10% invade odds”,      accent:”#22aa44”},
+{id:“medium”,label:“🟡 Medium”,sub:“Balanced · 3 AP start · Standard rules”,               accent:”#f59e0b”},
+{id:“hard”,  label:“🔴 Hard”,  sub:“Aggressive AI · 2 AP start · −10% invade odds”,        accent:”#ef4444”},
+].map(d=>(
+<div key={d.id} onClick={()=>setDiff(d.id)} style={{
+flex:1,border:“1px solid”,borderRadius:8,padding:“12px 10px”,cursor:“pointer”,
+textAlign:“center”,transition:“all 0.2s”,
+borderColor:difficulty===d.id?d.accent:”#1e2830”,
+background:difficulty===d.id?`${d.accent}18`:”#0d1318”,
+boxShadow:difficulty===d.id?`0 0 16px ${d.accent}44`:“none”}}>
+<div style={{fontSize:15,fontWeight:700,color:”#e0e8f0”,marginBottom:4}}>{d.label}</div>
+<div style={{fontSize:10,color:”#4a6070”,lineHeight:1.5}}>{d.sub}</div>
+</div>
+))}
+</div>
+</div>
+<div style={{background:”#0d1318”,border:“1px solid #1e2830”,borderRadius:8,padding:“14px 18px”,marginBottom:24,fontSize:12,color:”#4a6070”,lineHeight:1.8}}>
+<span style={{color:”#f59e0b”,fontWeight:700}}>HOW TO PLAY: </span>
+Select an action → click a territory on the map → confirm. Invade adjacent regions to expand.
+Watch the <span style={{color:”#f59e0b”}}>News Feed</span> — Antarctica will judge you.
+Reach <span style={{color:”#f59e0b”}}>{TOTAL_VP} VP</span> to win.
+</div>
+<button onClick={startGame} disabled={!pf||!difficulty}
+style={{…S.bigBtn,opacity:(pf&&difficulty)?1:0.4,cursor:(pf&&difficulty)?“pointer”:“not-allowed”}}>
+BEGIN CONQUEST →
+</button>
+</div>
+</div>
+);
+
+// ─── END ────────────────────────────────────────────────────────────────────
+if(phase===“end”) return (
+<div style={S.root}><style>{CSS}</style>
+<div style={S.setup}>
+<div style={{textAlign:“center”,paddingTop:40}}>
+<div style={{fontSize:80,marginBottom:16}}>{gameOver?.win?“🏆”:“💀”}</div>
+<div style={{whiteSpace:“pre-wrap”,fontSize:15,lineHeight:1.9,color:”#c8d8e8”,
+background:”#0d1318”,border:“1px solid #1e2830”,borderRadius:10,padding:24,textAlign:“left”,marginBottom:24}}>
+{gameOver?.msg}
+</div>
+<button onClick={()=>setPhase(“setup”)} style={S.bigBtn}>↩ PLAY AGAIN</button>
+</div>
+</div>
+</div>
+);
+
+// ─── GAME ────────────────────────────────────────────────────────────────────
+const newsTypeColor={breaking:”#ef4444”,condemnation:”#f87171”,warning:”#f59e0b”,ally_offer:”#4ade80”,positive:”#4ade80”,threat:”#f87171”,event:”#4a6070”};
+
+return (
+<div style={S.root}><style>{CSS}</style>
+<div style={S.game}>
+
+```
+  {/* ── LEFT PANEL ─────────────────────────────────────────────────── */}
+  <div style={S.left}>
+    {/* Header */}
+    <div style={S.lHead}>
+      <span style={{fontSize:22}}>{pf.flag}</span>
+      <div>
+        <div style={{fontSize:13,fontWeight:700,color:"#c8d8e8"}}>{pf.name}</div>
+        <div style={{fontSize:10,color:pColor,letterSpacing:"0.1em"}}>TURN {turn}/24</div>
+      </div>
+    </div>
+
+    {/* Scores */}
+    <div style={S.scoreBox}>
+      {[{flag:pf.flag,name:"You",color:pColor,vp:playerVP},
+        ...AI_FACTIONS.map(a=>({flag:a.flag,name:a.name,color:a.color,vp:aiVP(a.id)}))
+      ].sort((a,b)=>b.vp-a.vp).map((p,i)=>(
+        <div key={i} style={{display:"flex",alignItems:"center",gap:6,marginBottom:5}}>
+          <span style={{fontSize:14}}>{p.flag}</span>
+          <div style={{flex:1}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
+              <span style={{fontSize:11,color:"#8a9aaa"}}>{p.name}</span>
+              <span style={{fontSize:12,fontWeight:700,color:p.color}}>{p.vp}<span style={{fontSize:9,color:"#3a4a5a"}}>/{TOTAL_VP}</span></span>
+            </div>
+            <div style={{height:3,background:"#0d1318",borderRadius:2,overflow:"hidden"}}>
+              <div style={{height:"100%",width:`${(p.vp/TOTAL_VP)*100}%`,background:p.color,borderRadius:2,transition:"width 0.4s"}}/>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+
+    {/* AP */}
+    <div style={S.apBox}>
+      <div style={{fontSize:9,color:"#3a4a5a",letterSpacing:"0.2em",textTransform:"uppercase",marginBottom:5}}>Action Points</div>
+      <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:4}}>
+        {Array.from({length:Math.max(ap,3)}).map((_,i)=>(
+          <div key={i} style={{width:13,height:13,borderRadius:2,
+            background:i<ap?"#f59e0b":"#1a2530",
+            boxShadow:i<ap?"0 0 6px #f59e0b88":"none",transition:"all 0.2s"}}/>
+        ))}
+      </div>
+      <div style={{fontSize:11,color:"#f59e0b"}}>{ap} AP remaining</div>
+    </div>
+
+    {/* Tension */}
+    <div style={S.tensBox}>
+      <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+        <div style={{fontSize:9,color:"#3a4a5a",letterSpacing:"0.2em",textTransform:"uppercase"}}>Global Tension</div>
+        <div style={{fontSize:11,color:tc(tension),fontWeight:700}}>{tension}/100</div>
+      </div>
+      <div style={{height:6,background:"#0d1318",borderRadius:3,overflow:"hidden"}}>
+        <div style={{height:"100%",width:`${tension}%`,background:tc(tension),borderRadius:3,transition:"width 0.5s,background 0.5s",boxShadow:`0 0 8px ${tc(tension)}88`}}/>
+      </div>
+    </div>
+
+    {/* Allies */}
+    {allies.size>0&&(
+      <div style={{background:"#081510",border:"1px solid #0d4a2a",borderRadius:6,padding:"8px 10px"}}>
+        <div style={{fontSize:9,color:"#0d6e4a",letterSpacing:"0.2em",textTransform:"uppercase",marginBottom:4}}>Allied Regions</div>
+        {[...allies].map(r=><div key={r} style={{fontSize:11,color:"#4ade80",marginBottom:2}}>🤝 {REGIONS[r].name}</div>)}
+      </div>
+    )}
+
+    {/* Actions */}
+    <div>
+      <div style={{fontSize:9,color:"#3a4a5a",letterSpacing:"0.2em",textTransform:"uppercase",marginBottom:6}}>Actions</div>
+      {[
+        {id:"invade",    icon:"⚔️",  label:"Invade",       cost:2, desc:"Attack adjacent region (60%)"},
+        {id:"fortify",   icon:"🛡️",  label:"Fortify",      cost:1, desc:"Defend your region (−22% enemy odds)"},
+        {id:"sanction",  icon:"💰",  label:"Sanctions",    cost:1, desc:"Freeze enemy next turn"},
+        {id:"ally",      icon:"🤝",  label:"Seek Alliance",cost:1, desc:"Recruit neutral region (50%)"},
+        {id:"diplomacy", icon:"🕊️",  label:"Diplomacy",    cost:1, desc:"Gain +1 AP this turn"},
+        {id:"nuke",      icon:"☢️",  label:"Nuke",         cost:4, desc:"Destroy region (88%). Tension +28"},
+      ].map(a=>(
+        <button key={a.id} title={a.desc}
+          onClick={()=>setSel(selAction===a.id?null:a.id)}
+          disabled={ap<a.cost}
+          style={{...S.aBtn,
+            background:selAction===a.id?"#1a2a18":"#0d1318",
+            borderColor:selAction===a.id?pColor:"#1e2830",
+            color:selAction===a.id?"#c8d8e8":"#6a7a8a",
+            opacity:ap<a.cost?0.3:1}}>
+          <span style={{marginRight:6}}>{a.icon}</span>
+          <span style={{flex:1,textAlign:"left",fontSize:12}}>{a.label}</span>
+          <span style={{fontSize:9,background:"#0a1015",color:"#f59e0b",padding:"2px 5px",borderRadius:3,border:"1px solid #2a3a1a"}}>{a.cost}AP</span>
+        </button>
+      ))}
+      {!showCO?(
+        <button onClick={()=>setShowCO(true)} style={{...S.aBtn,borderStyle:"dashed",color:"#3a4a5a",marginTop:2,fontSize:11}}>
+          ✏️ Custom order…
+        </button>
+      ):(
+        <div style={{marginTop:6}}>
+          <textarea value={customOrder} onChange={e=>setCO(e.target.value)}
+            onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();handleCustomOrder();}}}
+            placeholder="Type any order…" rows={2}
+            style={{width:"100%",background:"#0d1318",border:"1px solid #2a3a1a",borderRadius:5,color:"#c8d8e8",padding:"7px 9px",fontSize:12,fontFamily:"monospace",resize:"none",boxSizing:"border-box"}}/>
+          <div style={{display:"flex",gap:5,marginTop:5}}>
+            <button onClick={handleCustomOrder} style={{flex:1,...S.smallBtn,background:"#1a3a18",borderColor:"#2a6a28",color:"#4ade80"}}>EXECUTE</button>
+            <button onClick={()=>setShowCO(false)} style={{...S.smallBtn,background:"#0d1318",borderColor:"#1e2830",color:"#3a4a5a"}}>✕</button>
+          </div>
+        </div>
+      )}
+    </div>
+
+    {/* Selection status */}
+    {selAction&&(
+      <div style={{background:"#0d1a0d",border:`1px solid ${pColor}44`,borderRadius:6,padding:"10px 12px"}}>
+        {!selRegion?(
+          <div style={{fontSize:11,color:"#a0c0a0",lineHeight:1.5}}>
+            <span style={{color:pColor}}>●</span> Click a territory on the map
+          </div>
+        ):(
+          <>
+            <div style={{fontSize:11,color:"#a0c0a0",marginBottom:8}}>
+              Target: <strong style={{color:"#e0e8f0"}}>{REGIONS[selRegion]?.name}</strong>
+            </div>
+            <button onClick={()=>executeAction(selAction,selRegion)}
+              style={{width:"100%",background:pColor,border:"none",borderRadius:5,color:"#000",fontWeight:700,fontSize:12,padding:"8px",cursor:"pointer",fontFamily:"monospace"}}>
+              CONFIRM
+            </button>
+          </>
+        )}
+      </div>
+    )}
+
+    <button onClick={endTurn} style={S.endBtn}>END TURN →</button>
+    <button onClick={()=>setPhase("setup")} style={S.resetBtn}>↩ NEW GAME</button>
+  </div>
+
+  {/* ── RIGHT PANEL ─────────────────────────────────────────────────── */}
+  <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0}}>
+
+    {/* Tab bar */}
+    <div style={S.tabs}>
+      {[{id:"map",label:"🗺️  World Map"},{id:"log",label:"⚡  Command Log"},{id:"news",label:`📰  News ${news.length>1?`(${news.length})`:""}`,}].map(t=>(
+        <button key={t.id} onClick={()=>setTab(t.id)} style={{...S.tab,
+          color:tab===t.id?"#f59e0b":"#3a4a5a",
+          borderBottom:tab===t.id?"2px solid #f59e0b":"2px solid transparent",
+          background:tab===t.id?"#0d1318":"transparent"}}>
+          {t.label}
+        </button>
+      ))}
+    </div>
+
+    {/* ── MAP TAB ── */}
+    {tab==="map"&&(
+      <div style={{flex:1,overflow:"auto",background:"#060c14",display:"flex",alignItems:"center",justifyContent:"center",padding:8}}>
+        <svg viewBox="0 0 1000 500" style={{width:"100%",maxWidth:980,height:"auto",display:"block"}}
+          xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <radialGradient id="ocean" cx="50%" cy="35%" r="65%">
+              <stop offset="0%" stopColor="#0a1e35"/>
+              <stop offset="100%" stopColor="#040c18"/>
+            </radialGradient>
+            <filter id="regionGlow" x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur stdDeviation="3" result="blur"/>
+              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+            <filter id="selGlow" x="-30%" y="-30%" width="160%" height="160%">
+              <feGaussianBlur stdDeviation="6" result="blur"/>
+              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+          </defs>
+
+          {/* Ocean */}
+          <rect width="1000" height="500" fill="url(#ocean)"/>
+          {/* Grid */}
+          {[83,166,250,333,416].map(y=><line key={y} x1="0" y1={y} x2="1000" y2={y} stroke="#0a1828" strokeWidth="0.6" strokeDasharray="4 8"/>)}
+          {[100,200,300,400,500,600,700,800,900].map(x=><line key={x} x1={x} y1="0" x2={x} y2="500" stroke="#0a1828" strokeWidth="0.6" strokeDasharray="4 8"/>)}
+
+          {/* Ocean labels */}
+          {[{x:310,y:300,t:"ATLANTIC"},{x:840,y:280,t:"PACIFIC"},{x:610,y:390,t:"INDIAN"}].map(o=>(
+            <text key={o.t} x={o.x} y={o.y} textAnchor="middle" fontSize="11" fill="#0a2040" fontFamily="Georgia,serif" letterSpacing="4" style={{userSelect:"none"}}>{o.t}</text>
+          ))}
+
+          {/* Regions */}
+          {REGION_IDS.map(rid=>{
+            const path=REGION_PATHS[rid];
+            if(!path) return null;
+            const owner=terr[rid];
+            const baseColor=REGIONS[rid].color_base;
+            const oc=ownerColor(rid,terr,allies,pColor);
+            const fill=oc||baseColor;
+            const isFort=fortified.has(rid);
+            const isAlly=allies.has(rid)&&!owner;
+            const isSel=selRegion===rid;
+            const isHov=hovered===rid;
+            const isAnt=rid==="antarctica";
+            const lp=Object.entries(REGION_PATHS).find(([k])=>k===rid);
+            // Compute rough centroid from path string
+            const nums=path.match(/[\d.]+/g)?.map(Number)||[];
+            const xs=[],ys=[];
+            for(let i=0;i<nums.length-1;i+=2){xs.push(nums[i]);ys.push(nums[i+1]);}
+            const cx=xs.reduce((a,b)=>a+b,0)/xs.length;
+            const cy=ys.reduce((a,b)=>a+b,0)/ys.length;
+            const strokeC=isSel?"#ffffff":isFort?"#fbbf24":isAlly?"#4ade80":oc?"rgba(255,255,255,0.25)":"rgba(255,255,255,0.08)";
+            const strokeW=isSel?2.5:isFort||isAlly?2:0.8;
+            const opacity=isAnt?0.6:1;
+
+            return (
+              <g key={rid} style={{cursor:selAction?"crosshair":"default"}}
+                onMouseEnter={()=>setHov(rid)}
+                onMouseLeave={()=>setHov(null)}
+                onClick={()=>{ if(!selAction) return; setSelR(rid===selRegion?null:rid); }}>
+                {/* Glow behind selected */}
+                {isSel&&<path d={path} fill={`${pColor}33`} filter="url(#selGlow)"/>}
+                {/* Main fill */}
+                <path d={path}
+                  fill={`${fill}${isHov&&!isSel?"ee":"cc"}`}
+                  stroke={strokeC}
+                  strokeWidth={strokeW}
+                  opacity={opacity}
+                  style={{transition:"fill 0.3s,stroke 0.2s"}}
+                />
+                {/* Shore highlight */}
+                <path d={path} fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth="1.5"/>
+
+                {/* Labels — only show if not too small */}
+                {!isAnt&&(
+                  <>
+                    <text x={cx} y={cy-2} textAnchor="middle" fontSize="8.5"
+                      fill={oc?"#ffffff":"#4a6070"} fontFamily="Georgia,serif" fontWeight="600"
+                      style={{pointerEvents:"none",userSelect:"none",textShadow:"0 1px 4px #000"}}>
+                      {REGIONS[rid].short}
+                    </text>
+                    {REGIONS[rid].vp>0&&(
+                      <text x={cx} y={cy+10} textAnchor="middle" fontSize="7"
+                        fill={oc?"rgba(255,255,255,0.6)":"#2a3a4a"} fontFamily="monospace"
+                        style={{pointerEvents:"none",userSelect:"none"}}>
+                        {REGIONS[rid].vp}VP
+                      </text>
+                    )}
+                    {owner&&(
+                      <text x={cx+12} y={cy-8} textAnchor="middle" fontSize="12"
+                        style={{pointerEvents:"none",userSelect:"none"}}>
+                        {owner==="player"?pf.flag:AI_FACTIONS.find(a=>a.id===owner)?.flag}
+                      </text>
+                    )}
+                    {isFort&&<text x={cx-12} y={cy-8} textAnchor="middle" fontSize="11" style={{pointerEvents:"none"}}>🛡</text>}
+                    {isAlly&&<text x={cx-12} y={cy-8} textAnchor="middle" fontSize="11" style={{pointerEvents:"none"}}>🤝</text>}
+                  </>
+                )}
+                {isAnt&&(
+                  <text x={cx} y={cy+2} textAnchor="middle" fontSize="9" fill="#60a5fa"
+                    fontFamily="Georgia,serif" style={{pointerEvents:"none",userSelect:"none",letterSpacing:2}}>
+                    🐧 ANTARCTICA
+                  </text>
+                )}
+              </g>
+            );
+          })}
+
+          {/* Hover tooltip */}
+          {hovered&&(()=>{
+            const rid=hovered;
+            const nums=(REGION_PATHS[rid]||"").match(/[\d.]+/g)?.map(Number)||[];
+            const xs=[],ys=[];
+            for(let i=0;i<nums.length-1;i+=2){xs.push(nums[i]);ys.push(nums[i+1]);}
+            const cx=Math.min(Math.max(xs.reduce((a,b)=>a+b,0)/xs.length,100),860);
+            const cy=Math.max(ys.reduce((a,b)=>a+b,0)/ys.length-30,20);
+            const owner=terr[rid];
+            const oname=owner==="player"?pf.name:AI_FACTIONS.find(a=>a.id===owner)?.name||"Neutral";
+            return (
+              <g style={{pointerEvents:"none"}}>
+                <rect x={cx-60} y={cy-18} width="120" height="36" fill="rgba(0,0,0,0.85)" rx="4" stroke="#2a3a4a" strokeWidth="1"/>
+                <text x={cx} y={cy-4} textAnchor="middle" fontSize="10" fill="#c8d8e8" fontFamily="Georgia,serif" fontWeight="700">{REGIONS[rid].name}</text>
+                <text x={cx} y={cy+10} textAnchor="middle" fontSize="9" fill="#4a6070" fontFamily="Georgia,serif">{REGIONS[rid].vp}VP · {oname}</text>
+              </g>
+            );
+          })()}
+
+          {/* Legend */}
+          <rect x="8" y="8" width="130" height="108" fill="rgba(4,12,24,0.88)" rx="5" stroke="#1e2830" strokeWidth="1"/>
+          <text x="16" y="24" fontSize="8" fill="#3a4a5a" fontFamily="Georgia,serif" letterSpacing="2">LEGEND</text>
+          {[{flag:pf.flag,color:pColor,name:"You"},
+            ...AI_FACTIONS.map(a=>({flag:a.flag,color:a.color,name:a.name})),
+            {flag:"",color:"#0d6e4a",name:"Allied"},
+            {flag:"",color:"#1a2830",name:"Neutral"},
+          ].map((item,i)=>(
+            <g key={i}>
+              <rect x="14" y={32+i*17} width="12" height="12" fill={item.color} rx="2"/>
+              {item.flag&&<text x="18" y={42+i*17} fontSize="9">{item.flag}</text>}
+              <text x="30" y={42+i*17} fontSize="9" fill="#6a7a8a" fontFamily="Georgia,serif">{item.name}</text>
+            </g>
+          ))}
+
+          {/* Action banner */}
+          {selAction&&(
+            <>
+              <rect x="200" y="8" width="600" height="26" fill="rgba(245,158,11,0.12)" rx="4" stroke="#f59e0b" strokeWidth="1"/>
+              <text x="500" y="25" textAnchor="middle" fontSize="11" fill="#f59e0b" fontFamily="Georgia,serif" letterSpacing="1">
+                Click a territory to target it
+              </text>
+            </>
+          )}
+        </svg>
+
+        {/* Stats bar under map */}
+        <div style={{position:"absolute",bottom:0,left:0,right:0,display:"flex",gap:16,padding:"6px 16px",background:"rgba(4,12,24,0.9)",borderTop:"1px solid #1e2830",justifyContent:"center",flexWrap:"wrap"}}>
+          {[{label:"Your VP",val:`${playerVP}/${TOTAL_VP}`,color:pColor},
+            {label:"Regions",val:REGION_IDS.filter(r=>terr[r]==="player").length,color:pColor},
+            {label:"Allies",val:allies.size,color:"#4ade80"},
+            ...AI_FACTIONS.map(ai=>({label:ai.name,val:`${aiVP(ai.id)}VP`,color:ai.color}))
+          ].map((s,i)=>(
+            <div key={i} style={{fontSize:11,color:"#3a4a5a"}}>
+              {s.label}: <strong style={{color:s.color}}>{s.val}</strong>
+            </div>
+          ))}
+        </div>
+      </div>
+    )}
+
+    {/* ── LOG TAB ── */}
+    {tab==="log"&&(
+      <div ref={logRef} style={{flex:1,overflowY:"auto",padding:"14px 16px",display:"flex",flexDirection:"column",gap:6}}>
+        {log.map(e=>(
+          <div key={e.id} style={{...S.logRow,
+            color:e.t==="win"?"#4ade80":e.t==="loss"?"#f87171":e.t==="start"?"#f59e0b":e.t==="intel"?"#818cf8":"#4a6070",
+            borderLeft:`2px solid ${e.t==="win"?"#4ade80":e.t==="loss"?"#f87171":e.t==="start"?"#f59e0b":e.t==="intel"?"#818cf8":"#1e2830"}`
+          }}>{e.m}</div>
+        ))}
+        <div style={{height:8}}/>
+      </div>
+    )}
+
+    {/* ── NEWS TAB ── */}
+    {tab==="news"&&(
+      <div ref={newsRef} style={{flex:1,overflowY:"auto",padding:"14px 16px",display:"flex",flexDirection:"column",gap:10}}>
+        {news.length===0&&<div style={{color:"#2a3a4a",fontSize:13,textAlign:"center",marginTop:60}}>No news yet…</div>}
+        {[...news].reverse().map((item,i)=>(
+          <div key={item.ts+i} style={{...S.newsCard,borderColor:`${newsTypeColor[item.type]||"#1e2830"}44`}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4,alignItems:"center"}}>
+              <span style={{fontSize:9,letterSpacing:"0.15em",textTransform:"uppercase",fontWeight:700,
+                color:newsTypeColor[item.type]||"#3a4a5a"}}>
+                {item.type==="breaking"?"🔴 BREAKING":item.type==="condemnation"?"⚠️ CONDEMNED":item.type==="ally_offer"?"🟢 ALLIANCE":item.type==="warning"?"🟡 WARNING":item.type==="positive"?"✅ POSITIVE":item.type==="threat"?"🔺 THREAT":"📰 NEWS"}
+              </span>
+              <span style={{fontSize:9,color:"#2a3a4a"}}>{item.from}</span>
+            </div>
+            <div style={{fontSize:13,fontWeight:700,color:"#c8d8e8",marginBottom:5,lineHeight:1.4}}>{item.headline}</div>
+            <div style={{fontSize:12,color:"#4a5a6a",lineHeight:1.7}}>{item.body}</div>
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+</div>
+</div>
+```
+
+);
+}
+
+const CSS=`*{box-sizing:border-box;margin:0;padding:0;} textarea,input{outline:none;} button:hover:not(:disabled){filter:brightness(1.2);} ::-webkit-scrollbar{width:4px;} ::-webkit-scrollbar-track{background:transparent;} ::-webkit-scrollbar-thumb{background:#1e2830;border-radius:2px;} ::-webkit-scrollbar-thumb:hover{background:#2a3a4a;}`;
+const S={
+root:{minHeight:“100vh”,background:”#060c14”,color:”#c8d8e8”,fontFamily:”‘Georgia’,serif”,display:“flex”,justifyContent:“center”},
+setup:{maxWidth:640,width:“100%”,padding:“48px 24px 80px”},
+setupHeader:{textAlign:“center”,marginBottom:40,position:“relative”},
+glow:{position:“absolute”,top:-40,left:“50%”,transform:“translateX(-50%)”,width:340,height:220,background:“radial-gradient(ellipse,rgba(34,170,68,0.1) 0%,transparent 70%)”,pointerEvents:“none”},
+setupSub:{letterSpacing:“0.35em”,fontSize:10,color:”#22aa44”,marginBottom:8,textTransform:“uppercase”},
+setupTitle:{fontSize:52,fontWeight:900,letterSpacing:“0.08em”,margin:“0 0 8px”,background:“linear-gradient(135deg,#c8d8e8,#22aa44)”,WebkitBackgroundClip:“text”,WebkitTextFillColor:“transparent”},
+setupDesc:{color:”#3a5a4a”,fontSize:13},
+setupSection:{marginBottom:24},
+sLabel:{fontSize:9,letterSpacing:“0.25em”,color:”#22aa44”,marginBottom:10,textTransform:“uppercase”},
+fCard:{flex:1,border:“1px solid”,borderRadius:10,padding:“18px 10px”,cursor:“pointer”,display:“flex”,flexDirection:“column”,alignItems:“center”,gap:6,transition:“all 0.2s”,textAlign:“center”},
+bigBtn:{display:“block”,width:“100%”,padding:“15px”,background:“linear-gradient(135deg,#0a4a18,#22aa44)”,border:“none”,borderRadius:8,color:”#000”,fontFamily:“Georgia,serif”,fontWeight:700,fontSize:14,letterSpacing:“0.15em”,cursor:“pointer”},
+// game
+game:{display:“flex”,width:“100%”,minHeight:“100vh”},
+left:{width:220,minWidth:220,background:”#080e16”,borderRight:“1px solid #0e1a24”,padding:“12px 11px”,display:“flex”,flexDirection:“column”,gap:12,overflowY:“auto”},
+lHead:{display:“flex”,alignItems:“center”,gap:9,paddingBottom:10,borderBottom:“1px solid #0e1a24”},
+scoreBox:{background:”#0d1318”,border:“1px solid #0e1a24”,borderRadius:7,padding:“10px 11px”},
+apBox:{background:”#0a1218”,border:“1px solid #1a2a18”,borderRadius:7,padding:“9px 11px”},
+tensBox:{background:”#0d1318”,border:“1px solid #0e1a24”,borderRadius:7,padding:“9px 11px”},
+aBtn:{display:“flex”,alignItems:“center”,width:“100%”,border:“1px solid”,borderRadius:6,padding:“7px 9px”,cursor:“pointer”,fontFamily:“Georgia,serif”,marginBottom:4,transition:“all 0.15s”},
+smallBtn:{border:“1px solid”,borderRadius:5,padding:“6px 10px”,cursor:“pointer”,fontFamily:“monospace”,fontSize:11},
+endBtn:{marginTop:“auto”,width:“100%”,background:“linear-gradient(135deg,#0a1a2a,#1a3a6a)”,border:“1px solid #1a3a6a”,borderRadius:7,color:”#6a9adf”,fontFamily:“Georgia,serif”,fontWeight:700,fontSize:13,padding:“10px”,cursor:“pointer”,letterSpacing:“0.08em”},
+resetBtn:{background:“transparent”,border:“1px solid #0e1a24”,borderRadius:6,color:”#2a3a4a”,padding:“6px”,fontSize:11,cursor:“pointer”,fontFamily:“Georgia,serif”,width:“100%”},
+tabs:{display:“flex”,borderBottom:“1px solid #0e1a24”,background:”#080e16”,flexShrink:0},
+tab:{flex:1,background:“transparent”,border:“none”,fontFamily:“Georgia,serif”,fontSize:12,padding:“11px 6px”,cursor:“pointer”,letterSpacing:“0.05em”,transition:“all 0.15s”},
+logRow:{padding:“8px 10px”,borderRadius:4,fontSize:12,lineHeight:1.7,background:”#080e16”},
+newsCard:{background:”#0d1318”,border:“1px solid”,borderRadius:8,padding:“13px 15px”},
+};
+
+```
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(React.createElement(WarGame));
+```
+
+  </script>
+</body>
+</html>
